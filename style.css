@@ -1,0 +1,153 @@
+body {
+    font-family: 'Arial', sans-serif;
+    background-color: #3b5998; /* Dark blue background */
+    color: white;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    margin: 0;
+    padding: 20px;
+    box-sizing: border-box;
+}
+
+.container {
+    background-color: #2c3e50; /* Darker blue/grey for container */
+    border-radius: 10px;
+    padding: 25px;
+    box-shadow: 0 0 15px rgba(0, 0, 0, 0.5);
+    text-align: center;
+    width: 100%;
+    max-width: 600px; /* Max width for better layout on large screens */
+}
+
+h1 {
+    font-size: 1.8em;
+    margin-bottom: 20px;
+    color: #e0e0e0;
+}
+
+.game-board {
+    display: grid;
+    grid-template-columns: repeat(10, 1fr); /* 10 columns for 10x10 grid */
+    gap: 3px; /* Small gap between grapes */
+    width: fit-content; /* Adjusts to content size */
+    margin: 0 auto 20px auto; /* Center the board */
+    border: 3px solid #1a242f;
+    border-radius: 5px;
+    padding: 5px;
+    background-color: #1a242f;
+}
+
+.grape-button {
+    width: 48px; /* Same size as Tkinter buttons */
+    height: 48px;
+    background-color: #800080; /* Default grape color (purple) */
+    border: 2px solid #6a0dad;
+    border-radius: 50%; /* Make them circular */
+    cursor: pointer;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    overflow: hidden; /* Hide parts of image outside circle */
+    transition: background-color 0.2s, border-color 0.2s, transform 0.1s;
+    box-shadow: inset 0 0 5px rgba(0,0,0,0.3);
+}
+
+.grape-button:not([disabled]):hover {
+    transform: scale(1.05);
+    border-color: #ffcc00; /* Yellow border on hover */
+}
+
+.grape-button img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover; /* Ensure image covers the button */
+    border-radius: 50%; /* Make image also circular */
+}
+
+.grape-button.taken {
+    background-color: #4CAF50; /* Green for taken */
+    border-color: #388E3C;
+    cursor: default;
+    box-shadow: inset 0 0 8px rgba(0,0,0,0.5);
+}
+
+.grape-button.poisoned {
+    background-color: #f44336; /* Red for poisoned */
+    border-color: #D32F2F;
+    cursor: default;
+    box-shadow: inset 0 0 8px rgba(0,0,0,0.5);
+}
+
+.grape-button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.log-container {
+    background-color: #1a242f;
+    border-radius: 8px;
+    padding: 15px;
+    margin-top: 20px;
+    text-align: left;
+}
+
+.log-container h2 {
+    font-size: 1.2em;
+    margin-top: 0;
+    margin-bottom: 10px;
+    color: #e0e0e0;
+}
+
+.game-log {
+    background-color: #0d141b;
+    border: 1px solid #333;
+    height: 120px;
+    overflow-y: scroll;
+    padding: 10px;
+    border-radius: 5px;
+    font-size: 0.9em;
+    line-height: 1.4;
+    color: #c0c0c0;
+    word-wrap: break-word;
+}
+
+.game-log::-webkit-scrollbar {
+    width: 8px;
+}
+
+.game-log::-webkit-scrollbar-track {
+    background: #2c3e50;
+    border-radius: 10px;
+}
+
+.game-log::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 10px;
+}
+
+.game-log::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}
+
+button#quit-button {
+    background-color: #d9534f; /* Red */
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 1.1em;
+    margin-top: 20px;
+    transition: background-color 0.2s;
+}
+
+button#quit-button:hover {
+    background-color: #c9302c;
+}
+
+button#quit-button:disabled {
+    background-color: #aaaaaa;
+    cursor: not-allowed;
+}
