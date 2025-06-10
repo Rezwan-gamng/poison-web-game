@@ -30,7 +30,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // or 'ws://<random_string>.ngrok-free.app'. Make sure to use wss:// if ngrok gives you https://
     
     try {
-        socket = new WebSocket('wss://YOUR_NGROK_WEBSOCKET_URL_HERE'); // <<< CHANGE THIS LINE
+        socket = new WebSocket('wss://a51f-114-130-144-194.ngrok-free.app'); // <<< CHANGE THIS LINE
         
         socket.onopen = (event) => {
             statusLabel.textContent = "Connected to game server.";
