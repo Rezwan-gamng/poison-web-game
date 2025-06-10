@@ -37,7 +37,7 @@ document.addEventListener('DOMContentLoaded', () => {
             statusLabel.textContent = "Connected to game server.";
             logMessage("WebSocket connected successfully.");
             quitButton.disabled = false;
-            restartButton.disabled = true; // Disable restart until game ends
+            restartButton.disabled = false; // <<< CHANGE: Enable restart button immediately
         };
 
         socket.onmessage = (event) => {
@@ -48,7 +48,7 @@ document.addEventListener('DOMContentLoaded', () => {
         socket.onclose = (event) => {
             statusLabel.textContent = "Disconnected. Game Over.";
             logMessage(`Disconnected from server. Code: ${event.code}. Reason: ${event.reason}`);
-            endGame();
+            endGame(); // End game will now enable the reset button if it somehow got disabled
         };
 
         socket.onerror = (error) => {
@@ -83,7 +83,7 @@ document.addEventListener('DOMContentLoaded', () => {
     quitButton.addEventListener('click', quitGame);
     // NEW: Restart Button Event Listener
     restartButton.addEventListener('click', requestRestart);
-    restartButton.disabled = true; // Initially disabled
+    // restartButton.disabled = true; // <<< REMOVED: Now enabled by default on open
 });
 
 
@@ -185,6 +185,7 @@ function handleServerMessage(msg) {
         logMessage("Game has been restarted by the server. Waiting for players to reconnect/ready.");
         resetClientUI(true); // Reset UI and clear log
         statusLabel.textContent = `Game restarted. Welcome, Player ${player_id + 1} of ${num_players}! Waiting for other players...`;
+        restartButton.disabled = false; // Re-enable restart button after server confirms restart
     }
 }
 
@@ -194,7 +195,8 @@ function updateGUI() {
         const button = gameBoard.children[i];
         
         // Clear previous states (EXCEPT 'poisoned' class here, it's applied only on game_over)
-        button.classList.remove('taken', 'current-player-turn', 'poison-selection-active');
+        // Ensure 'poisoned' class is removed on any UI update that isn't game_over
+        button.classList.remove('taken', 'current-player-turn', 'poison-selection-active', 'poisoned');
         button.disabled = true; // Default to disabled
 
         // Apply 'taken' state if grape is taken
@@ -207,14 +209,13 @@ function updateGUI() {
         if (poison_selection_phase) {
             statusLabel.textContent = "POISON SELECTION PHASE: Select a grape to poison.";
             if (player_id !== null && !has_my_poison_been_chosen) {
-                // Enable for selection if not taken and not already chosen as poison by self/others (visually hidden)
-                // We need to check if the grape is NOT in poison_indices
+                // Enable for selection if not taken and NOT already chosen as poison by self/others
                 if (!taken_grapes[i] && !poison_indices.has(i)) {
                     button.disabled = false;
                     button.classList.add('poison-selection-active'); // Highlight for poison selection
                 } else if (poison_indices.has(i)) {
                     // If it's a poison grape already (from another player), it should be disabled for selection
-                    button.disabled = true;
+                    button.disabled = true; // Still disabled but not red
                 }
             } else if (player_id !== null && has_my_poison_been_chosen) {
                 statusLabel.textContent = `POISON SELECTION PHASE: Waiting for others to choose poison...`;
@@ -291,14 +292,14 @@ function logMessage(message) {
 function endGame() {
     Array.from(gameBoard.children).forEach(button => button.disabled = true);
     quitButton.disabled = true; // Disable quit after game over
-    restartButton.disabled = false; // Enable restart button
+    // restartButton.disabled = false; // This is now handled by initial_setup or game_restarted
 }
 
 function quitGame() {
     if (socket) {
         socket.close(1000, "Player quit game"); // Code 1000 for normal closure
     }
-    endGame(); // Call endGame to update UI and enable restart
+    endGame(); // Call endGame to update UI
     statusLabel.textContent = "Game Over: You quit.";
     logMessage("You quit the game.");
     alert("You have quit the game.");
@@ -306,7 +307,7 @@ function quitGame() {
 
 // NEW: Request Restart Function
 function requestRestart() {
-    logMessage("Requesting game restart...");
+    logMessage("Requesting game reset...");
     sendToServer({ type: 'restart_request', player_id: player_id });
     restartButton.disabled = true; // Disable until server confirms restart
 }
@@ -335,5 +336,5 @@ function resetClientUI(clearLog = false) {
     
     statusLabel.textContent = "Waiting for server to start a new game...";
     quitButton.disabled = false; // Re-enable quit button
-    restartButton.disabled = true; // Keep disabled until game ends again
+    // restartButton.disabled = true; // This will be re-enabled when socket opens or game_restarted from server
 }
