@@ -20,7 +20,7 @@ const statusLabel = document.getElementById('status-label');
 const gameBoard = document.getElementById('game-board');
 const gameLog = document.getElementById('game-log');
 const quitButton = document.getElementById('quit-button');
-const restartButton = document.getElementById('restart-button'); // NEW: Restart Button
+const restartButton = document.getElementById('restart-button');
 
 // --- Initialization ---
 document.addEventListener('DOMContentLoaded', () => {
