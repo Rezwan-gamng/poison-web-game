@@ -20,235 +20,237 @@ const statusLabel = document.getElementById('status-label');
 const gameBoard = document.getElementById('game-board');
 const gameLog = document.getElementById('game-log');
 const quitButton = document.getElementById('quit-button');
+const restartButton = document.getElementById('restart-button'); // NEW: Restart Button
 
 // --- Initialization ---
 document.addEventListener('DOMContentLoaded', () => {
+    // --- START: WebSocket Connection ---
+    // IMPORTANT: Replace 'YOUR_NGROK_WEBSOCKET_URL_HERE' with the actual ngrok URL
+    // that your ngrok client provides when you run 'ngrok http 5000'.
+    // It will look something like 'wss://<random_string>.ngrok-free.app'
+    // or 'ws://<random_string>.ngrok-free.app'. Make sure to use wss:// if ngrok gives you https://
+    
+    try {
+        socket = new WebSocket('wss://YOUR_NGROK_WEBSOCKET_URL_HERE'); // <<< CHANGE THIS LINE
+        
+        socket.onopen = (event) => {
+            statusLabel.textContent = "Connected to game server.";
+            logMessage("WebSocket connected successfully.");
+            quitButton.disabled = false;
+            restartButton.disabled = true; // Disable restart until game ends
+        };
+
+        socket.onmessage = (event) => {
+            const msg = JSON.parse(event.data);
+            handleServerMessage(msg); // Call the main message handler
+        };
+
+        socket.onclose = (event) => {
+            statusLabel.textContent = "Disconnected. Game Over.";
+            logMessage(`Disconnected from server. Code: ${event.code}. Reason: ${event.reason}`);
+            endGame();
+        };
+
+        socket.onerror = (error) => {
+            logMessage(`WebSocket error: ${error.message}`);
+            statusLabel.textContent = "Connection Error!";
+            endGame(); // End game on error
+        };
+    } catch (error) {
+        logMessage(`Error creating WebSocket: ${error.message}`);
+        statusLabel.textContent = "Failed to connect!";
+        endGame(); // End game on error
+    }
+    // --- END: WebSocket Connection ---
+
+
+    // Populate the game board with grape buttons
     for (let i = 0; i < total_grapes; i++) {
         const button = document.createElement('button');
         button.classList.add('grape-button');
         button.dataset.index = i;
-        button.disabled = true;
+        button.disabled = true; // Disabled until game starts or it's player's turn/poison selection
 
         const img = document.createElement('img');
-        img.src = 'grape.png';
+        img.src = 'grape.png'; // Make sure grape.png is in the same directory as index.html
         img.alt = `Grape ${i + 1}`;
         button.appendChild(img);
-        
+
         button.addEventListener('click', () => onGrapeClick(i));
         gameBoard.appendChild(button);
     }
 
-    connectWebSocket();
     quitButton.addEventListener('click', quitGame);
+    // NEW: Restart Button Event Listener
+    restartButton.addEventListener('click', requestRestart);
+    restartButton.disabled = true; // Initially disabled
 });
 
-// --- WebSocket Communication ---
-function connectWebSocket() {
-    socket = new WebSocket('wss://c02b-114-130-144-194.ngrok-free.app'); // Use the URL ngrok gives you 
 
-    socket.onopen = (event) => {
-        logMessage('Connected to game server.');
-        statusLabel.textContent = 'Waiting for all players to connect...';
-    };
-
-    socket.onmessage = (event) => {
-        const msg = JSON.parse(event.data);
-        handleServerMessage(msg);
-    };
-
-    socket.onclose = (event) => {
-        logMessage('Disconnected from server. Code: ' + event.code);
-        statusLabel.textContent = 'Disconnected. Game Over.';
-        endGame();
-    };
-
-    socket.onerror = (error) => {
-        console.error('WebSocket Error:', error);
-        logMessage('WebSocket connection error.');
-        endGame();
-    };
-}
-
+// --- Server Communication ---
 function sendToServer(message) {
     if (socket && socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify(message));
     } else {
-        logMessage('Cannot send message: Not connected to server.');
+        logMessage("Not connected to server. Message not sent.");
     }
 }
 
-// --- Handle Server Messages ---
+// --- Server Message Handling ---
 function handleServerMessage(msg) {
-    switch (msg.type) {
-        case 'welcome':
-            player_id = msg.player_id;
-            num_players = msg.num_players;
-            logMessage(`Welcome! You are Player ${player_id + 1} of ${num_players}.`);
-            taken_grapes = new Array(total_grapes).fill(false);
-            updateUI();
-            break;
+    const type = msg.type;
 
-        // --- NEW: Initial setup for poison selection ---
-        case 'initial_setup':
-            poison_selection_phase = msg.is_poison_selection_phase;
-            if (poison_selection_phase) {
-                statusLabel.textContent = `Player ${player_id + 1}: Choose your poisoned grape!`;
-                logMessage('It\'s time to choose your poisoned grape. Click a grape on the board.');
+    if (type === 'welcome') {
+        player_id = msg.player_id;
+        num_players = msg.num_players;
+        statusLabel.textContent = `Welcome, Player ${player_id + 1} of ${num_players}! Waiting for other players...`;
+        logMessage(`You are Player ${player_id + 1}.`);
+
+        resetClientUI(false); // Reset UI but don't clear log or enable restart
+        
+    } else if (type === 'initial_setup') {
+        poison_selection_phase = true;
+        has_my_poison_been_chosen = false; // Reset for a new phase
+        logMessage('Poison selection phase started.');
+        updateGUI(); // Will enable buttons for poison selection if it's my turn
+    
+    } else if (type === 'poison_selection_update') {
+        const selected_index = msg.selected_index;
+        const selector_id = msg.selector_id;
+        
+        updateGUI(); // Update UI to reflect changes
+        
+    } else if (type === 'start_game') {
+        poison_indices = new Set(msg.poison_indices); // Update with ALL chosen poisons
+        all_poisons_set = true;
+        current_turn_player_id = msg.turn;
+        taken_grapes = msg.taken;
+        poison_selection_phase = false; // End poison selection phase
+        logMessage(`Game started! Total poisons: ${poison_indices.size}.`);
+        updateGUI();
+
+    } else if (type === 'update') {
+        current_turn_player_id = msg.turn;
+        taken_grapes = msg.taken;
+        const last_pick_index = msg.last_pick_index;
+        const last_player_id = msg.last_player_id;
+        if (last_pick_index !== undefined) {
+            logMessage(`Player ${last_player_id + 1} picked grape #${last_pick_index + 1}.`);
+        }
+        updateGUI();
+
+    } else if (type === 'game_over') {
+        const loser_ids = msg.loser_ids; // Can be an array if multiple poisons, or just one
+        poison_indices = new Set(msg.poison_indices); // Ensure client has all poison locations
+        
+        // Reveal all poison grapes
+        poison_indices.forEach(idx => {
+            const grapeButton = gameBoard.children[idx];
+            if (grapeButton) {
+                grapeButton.classList.add('poisoned');
             }
-            updateUI(); // Enable buttons for poison selection
-            break;
+        });
 
-        // --- NEW: Update during poison selection phase ---
-        case 'poison_selection_update':
-            logMessage(`Player ${msg.player_who_chose + 1} has chosen their poison grape. (${msg.poisons_set_count}/${msg.total_players_needed} chosen)`);
-            if (msg.poisons_set_count < msg.total_players_needed && has_my_poison_been_chosen) {
-                statusLabel.textContent = `Waiting for others to choose poison...`;
-            }
-            updateUI(); // May re-disable buttons if my poison is chosen
-            break;
+        if (loser_ids.includes(player_id)) {
+            logMessage(`You picked a poisoned grape! You lose.`);
+            statusLabel.textContent = `Game Over: You lose!`;
+            alert("Game Over! You picked a poisoned grape. You lose.");
+        } else {
+            logMessage(`Player(s) ${loser_ids.map(id => id + 1).join(', ')} picked poison. You win!`);
+            statusLabel.textContent = `Game Over: You win!`;
+            alert(`Game Over! Player(s) ${loser_ids.map(id => id + 1).join(', ')} picked poison. You win!`);
+        }
+        endGame();
 
-        // --- MODIFIED: Start game now includes multiple poison indices ---
-        case 'start_game':
-            poison_indices = new Set(msg.poison_indices); // Store multiple
-            all_poisons_set = true;
-            poison_selection_phase = false; // End this phase
-            current_turn_player_id = msg.turn;
-            taken_grapes = msg.taken;
-            logMessage(`Game started! All ${poison_indices.size} poison grapes have been selected.`);
-            updateUI();
-            break;
+    } else if (type === 'draw') {
+        logMessage("Draw: all safe grapes have been picked.");
+        statusLabel.textContent = "Game Over: Draw!";
+        alert("All safe grapes have been picked. It's a draw!");
+        endGame();
+    
+    } else if (type === 'player_disconnected') {
+        const disconnected_player_id = msg.disconnected_player_id;
+        logMessage(`Player ${disconnected_player_id + 1} disconnected. Game ended.`);
+        statusLabel.textContent = `Game Over: Player ${disconnected_player_id + 1} disconnected.`;
+        alert(`Player ${disconnected_player_id + 1} disconnected. The game has ended.`);
+        endGame();
 
-        case 'update':
-            current_turn_player_id = msg.turn;
-            taken_grapes = msg.taken;
-            if (msg.last_pick_index !== undefined) {
-                logMessage(`Player ${msg.last_player_id + 1} picked grape #${msg.last_pick_index + 1}.`);
-            }
-            updateUI();
-            break;
-
-        // --- MODIFIED: Game over now shows ALL poison grapes ---
-        case 'game_over':
-            const loser = msg.loser;
-            const poison_idx_picked = msg.poison_index_picked;
-            const all_poison_indices_list = msg.all_poison_indices;
-            
-            // Highlight all poison grapes in red
-            all_poison_indices_list.forEach(idx => {
-                const poisonGrapeButton = gameBoard.children[idx];
-                if (poisonGrapeButton) {
-                    poisonGrapeButton.classList.add('poisoned');
-                }
-            });
-
-            if (loser === player_id) {
-                logMessage(`You picked grape #${poison_idx_picked + 1}, which was poisoned. You lose!`);
-                alert('Game Over! You picked a poisoned grape. You lose!');
-            } else {
-                logMessage(`Player ${loser + 1} picked grape #${poison_idx_picked + 1}, which was poisoned. You win!`);
-                alert(`Game Over! Player ${loser + 1} picked a poisoned grape. You win!`);
-            }
-            endGame();
-            break;
-
-        case 'draw':
-            logMessage('Draw: All safe grapes have been picked!');
-            alert('It\'s a Draw! All safe grapes have been picked.');
-            endGame();
-            break;
-        case 'player_disconnected':
-            logMessage(`Player ${msg.disconnected_player_id + 1} disconnected. Game ended.`);
-            alert(`Player ${msg.disconnected_player_id + 1} disconnected. The game has ended.`);
-            endGame();
-            break;
-        case 'error': // Handle server-side errors (e.g., trying to pick already poisoned grape during selection)
-            logMessage(`Error: ${msg.message}`);
-            // Re-enable buttons if it was a selection error and it's their turn
-            updateUI(); 
-            break;
-        default:
-            logMessage('Unknown message from server: ' + JSON.stringify(msg));
+    } else if (type === 'error') {
+        logMessage(`SERVER ERROR: ${msg.message}`);
+        statusLabel.textContent = "Error from server!";
+    } else if (type === 'game_restarted') { // NEW: Handle game restart from server
+        logMessage("Game has been restarted by the server.");
+        resetClientUI(true); // Reset UI and clear log
+        statusLabel.textContent = `Game restarted. Welcome, Player ${player_id + 1} of ${num_players}! Waiting for other players...`;
     }
 }
 
-// --- UI Updates ---
-function updateUI() {
-    const buttons = gameBoard.children;
-
+// --- GUI Update Logic ---
+function updateGUI() {
     for (let i = 0; i < total_grapes; i++) {
-        const button = buttons[i];
+        const button = gameBoard.children[i];
         
-        button.classList.remove('taken', 'poisoned'); // Reset for updates
-        button.style.backgroundColor = '#800080'; // Default purple color
+        // Clear previous states
+        button.classList.remove('taken', 'current-player-turn', 'poison-selection-active', 'poisoned');
+        button.disabled = true; // Default to disabled
 
+        // Apply new states based on game logic
         if (taken_grapes[i]) {
             button.classList.add('taken');
             button.disabled = true;
-        } else {
-            button.disabled = true; // Default to disabled
+        } else if (poison_indices.has(i)) {
+            // Only mark as poisoned if game is over and it was revealed, or if it was just picked
+            // Otherwise, keep it hidden during gameplay
+            // This logic is mostly for post-game reveal. During game, it's just 'untaken'
+            button.classList.add('poisoned');
+            button.disabled = true;
         }
-
-        // --- NEW UI Logic for Poison Selection Phase ---
+        
+        // --- NEW Poison Selection Phase UI ---
         if (poison_selection_phase) {
-            if (!has_my_poison_been_chosen) {
-                // If it's my turn to choose poison and I haven't chosen yet
-                if (!taken_grapes[i]) { // Can't select an already picked grape
+            statusLabel.textContent = "POISON SELECTION PHASE: Select a grape to poison.";
+            if (player_id !== null && !has_my_poison_been_chosen) { // Only enable if it's my turn to pick poison AND I haven't picked yet
+                if (!taken_grapes[i]) { // Can't pick an already taken grape as poison
                     button.disabled = false;
-                    button.style.backgroundColor = '#FFA500'; // Orange for selectable poison pick
+                    button.classList.add('poison-selection-active'); // Highlight for poison selection
+                }
+            } else if (player_id !== null && has_my_poison_been_chosen) {
+                statusLabel.textContent = `POISON SELECTION PHASE: Waiting for others to choose poison...`;
+            }
+
+        }
+        // --- End NEW Poison Selection Phase UI ---
+        
+        // Normal game turn logic (after poison selection phase)
+        else if (all_poisons_set && current_turn_player_id !== null) {
+            if (current_turn_player_id === player_id) {
+                statusLabel.textContent = "Your Turn! Pick a grape.";
+                if (!taken_grapes[i] && !poison_indices.has(i)) { // Can only pick untaken, non-poisoned grapes
+                    button.disabled = false;
+                    button.classList.add('current-player-turn');
                 }
             } else {
-                // If I have chosen my poison, disable my buttons and wait
-                button.disabled = true;
-            }
-        } 
-        // --- End NEW UI Logic for Poison Selection Phase ---
-        
-        // Normal Game Play Phase
-        else if (all_poisons_set) { // Only enable if all poisons are set
-            const isMyTurn = (current_turn_player_id === player_id);
-            if (isMyTurn && !taken_grapes[i]) {
-                button.disabled = false;
-                button.style.backgroundColor = '#ADD8E6'; // Light blue for current player's turn
-            } else if (taken_grapes[i]) {
-                 button.classList.add('taken');
-                 button.disabled = true;
-            } else {
-                button.disabled = true;
+                statusLabel.textContent = `Player ${current_turn_player_id + 1}'s Turn.`;
             }
         }
-    }
-
-    // Update status label
-    if (poison_selection_phase) {
-        if (!has_my_poison_been_chosen) {
-            statusLabel.textContent = `Player ${player_id + 1}: Choose your poisoned grape!`;
-        } else {
-            statusLabel.textContent = `Player ${player_id + 1}: Waiting for others to choose poison...`;
-        }
-    } else if (all_poisons_set) {
-        const currentPlayerDisplayName = (current_turn_player_id + 1);
-        const youAreText = `(You are Player ${player_id + 1})`;
-        if (current_turn_player_id === player_id) {
-            statusLabel.textContent = `Your Turn! ${youAreText}`;
-        } else {
-            statusLabel.textContent = `Player ${currentPlayerDisplayName}'s turn ${youAreText}`;
-        }
-    } else {
-        // Before game starts / players connect
-        statusLabel.textContent = "Waiting for all players to connect...";
     }
 }
 
-// --- Game Actions ---
+// --- Grape Click Handler ---
 function onGrapeClick(index) {
-    // --- NEW: Handle poison selection click ---
-    if (poison_selection_phase && !has_my_poison_been_chosen) {
-        if (taken_grapes[index]) { // Already picked in this initial state? (shouldn't happen)
-            logMessage(`Grape #${index + 1} is already taken.`);
+    if (socket && socket.readyState !== WebSocket.OPEN) {
+        logMessage("Not connected to server.");
+        return;
+    }
+
+    // --- NEW Poison Selection Handling ---
+    if (poison_selection_phase && player_id !== null && !has_my_poison_been_chosen) {
+        if (taken_grapes[index]) { // Grapes already taken can't be poisoned
+            logMessage(`Grape #${index + 1} is already taken and cannot be poisoned.`);
             return;
         }
-        sendToServer({ type: 'poison_select', index: index });
-        logMessage(`You are choosing grape #${index + 1} as your poison.`);
+        sendToServer({ type: 'poison_select', player_id: player_id, index: index });
+        logMessage(`You selected grape #${index + 1} as your poison.`);
         has_my_poison_been_chosen = true; // Mark that this client has chosen
         // Temporarily disable all buttons after your pick until server confirms game start or updates status
         Array.from(gameBoard.children).forEach(button => button.disabled = true);
@@ -278,13 +280,49 @@ function logMessage(message) {
 
 function endGame() {
     Array.from(gameBoard.children).forEach(button => button.disabled = true);
-    // Optionally change the quit button text or appearance
+    quitButton.disabled = true; // Disable quit after game over
+    restartButton.disabled = false; // Enable restart button
 }
 
 function quitGame() {
-    if (socket && socket.readyState === WebSocket.OPEN) {
-        socket.close();
+    if (socket) {
+        socket.close(1000, "Player quit game"); // Code 1000 for normal closure
     }
-    alert('You have quit the game. Refresh the page to play again.');
-    window.close();
+    endGame(); // Call endGame to update UI and enable restart
+    statusLabel.textContent = "Game Over: You quit.";
+    logMessage("You quit the game.");
+    alert("You have quit the game.");
+}
+
+// NEW: Request Restart Function
+function requestRestart() {
+    logMessage("Requesting game restart...");
+    sendToServer({ type: 'restart_request', player_id: player_id });
+    restartButton.disabled = true; // Disable until server confirms restart
+}
+
+// NEW: Function to reset client-side UI and game state
+function resetClientUI(clearLog = false) {
+    // Reset client-side game state variables
+    poison_indices.clear();
+    poison_selection_phase = false;
+    has_my_poison_been_chosen = false;
+    all_poisons_set = false;
+    current_turn_player_id = null;
+    taken_grapes = new Array(total_grapes).fill(false); // Reset all grapes to not taken
+
+    // Clear the board visually and enable/disable buttons
+    for (let i = 0; i < total_grapes; i++) {
+        const button = gameBoard.children[i];
+        button.classList.remove('taken', 'current-player-turn', 'poison-selection-active', 'poisoned');
+        button.disabled = true; // Disable all until server sends initial_setup
+    }
+
+    if (clearLog) {
+        gameLog.innerHTML = ''; // Clear game log
+    }
+    
+    statusLabel.textContent = "Waiting for server to start a new game...";
+    quitButton.disabled = false; // Re-enable quit button
+    restartButton.disabled = true; // Keep disabled until game ends again
 }
