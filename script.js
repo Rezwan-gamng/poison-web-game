@@ -44,7 +44,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // --- WebSocket Communication ---
 function connectWebSocket() {
-    socket = new WebSocket('https://c02b-114-130-144-194.ngrok-free.app'); // Use the URL ngrok gives you 
+    socket = new WebSocket('wss://c02b-114-130-144-194.ngrok-free.app'); // Use the URL ngrok gives you 
 
     socket.onopen = (event) => {
         logMessage('Connected to game server.');
